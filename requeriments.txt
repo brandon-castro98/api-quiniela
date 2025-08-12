@@ -1,8 +1,0 @@
-django
-gunicorn
-psycopg2-binary
-django-cors-headers
-djangorestframework
-djangorestframework-simplejwt
-python-decouple
-dj-database-url
