@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Quiniela, Participante, Partido, Eleccion
+from .models import Quiniela, Participante, Partido, Eleccion, Equipo
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -18,6 +18,11 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             password=validated_data['password']
         )
         return user
+    
+class EquipoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Equipo
+        fields = '__all__'
     
 class PartidoSerializer(serializers.ModelSerializer):
     class Meta:

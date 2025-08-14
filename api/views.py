@@ -3,13 +3,18 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import generics
+from rest_framework import generics, viewsets, permissions
 from django.utils import timezone
-from .models import Quiniela, Participante, Partido, Eleccion
-from .serializer import ResultadoPartidoSerializer, UserRegisterSerializer, QuinielaSerializer, ParticipanteSerializer, PartidoSerializer, EleccionCreateSerializer, FechaLimiteSerializer
+from .models import Quiniela, Participante, Partido, Eleccion, Equipo
+from .serializer import EquipoSerializer, ResultadoPartidoSerializer, UserRegisterSerializer, QuinielaSerializer, ParticipanteSerializer, PartidoSerializer, EleccionCreateSerializer, FechaLimiteSerializer
 from .permissions import EsCreadorDeQuiniela
 
 # Create your views here.
+
+class EquipoViewSet(viewsets.ModelViewSet):
+    queryset = Equipo.objects.all()
+    serializer_class = EquipoSerializer
+    permission_classes = [permissions.AllowAny]  # Cambiar a IsAuthenticatedOrReadOnly si quieres proteger POST/PUT
 
 class RegisterView(APIView):
     def post(self, request):

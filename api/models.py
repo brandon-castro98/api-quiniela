@@ -19,15 +19,25 @@ class Participante(models.Model):
 
     def __str__(self):
         return self.usuario.username
+    
+class Equipo(models.Model):
+    nombre = models.CharField(max_length=100)
+    abreviatura = models.CharField(max_length=5)
+    ciudad = models.CharField(max_length=100)
+    logo_url = models.URLField()
+
+    def __str__(self):
+        return f"{self.nombre} ({self.abreviatura})"
 
 class Partido(models.Model):
-    quiniela = models.ForeignKey(Quiniela, on_delete=models.CASCADE, related_name='partidos')
-    equipo_local = models.CharField(max_length=50)
-    equipo_visitante = models.CharField(max_length=50)
+    quiniela = models.ForeignKey(Quiniela, on_delete=models.CASCADE, related_name="partidos")
+    equipo_local = models.ForeignKey(Equipo, on_delete=models.CASCADE, related_name="partidos_local")
+    equipo_visitante = models.ForeignKey(Equipo, on_delete=models.CASCADE, related_name="partidos_visitante")
+    fecha = models.DateTimeField(null=True, blank=True)
     resultado_real = models.CharField(max_length=50, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.equipo_local} vs {self.equipo_visitante}"
+        return f"{self.equipo_local} vs {self.equipo_visitante} - {self.quiniela.nombre}"
 
 class Eleccion(models.Model):
     participante = models.ForeignKey(Participante, related_name='elecciones', on_delete=models.CASCADE)
@@ -39,3 +49,4 @@ class Eleccion(models.Model):
 
     def __str__(self):
         return f"{self.participante.usuario.username} eligió {self.equipo_elegido} en {self.partido}"
+    
