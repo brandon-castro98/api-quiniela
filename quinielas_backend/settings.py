@@ -26,22 +26,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('SECRET_KEY', default='kvhkjae4JrEsIxoOY4B/jQQ8Lb8yijZHvp2RpuYG2hh6tc+2Gl/NgLDezTZQjBtL')
 
-DEBUG = True  # 🔹 solo temporal para debug en producción
+DEBUG = False  # 🔹 solo temporal para debug en producción
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'stream': sys.stdout,
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'DEBUG',
-    },
-}
 ALLOWED_HOSTS = ['*','https://api-quiniela-phiv.onrender.com']
 
 
