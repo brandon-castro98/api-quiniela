@@ -78,7 +78,7 @@ class QuinielaSerializer(serializers.ModelSerializer):
 
      class Meta:
         model = Quiniela
-        fields = ['id', 'nombre', 'apuesta_individual', 'creada_por', 'fecha_creacion', 'participantes', 'partidos']
+        fields = ['id', 'nombre', 'apuesta_individual', 'creada_por', 'fecha_creacion', 'participantes', 'partidos', 'mostrar_elecciones']
 
 class ParticipanteSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='usuario.username')

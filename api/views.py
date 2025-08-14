@@ -18,6 +18,23 @@ class RegisterView(APIView):
             serializer.save()
             return Response({"mensaje": "Usuario creado correctamente"}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class CambiarMostrarEleccionesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            quiniela = Quiniela.objects.get(pk=pk)
+        except Quiniela.DoesNotExist:
+            return Response({'error': 'Quiniela no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+        mostrar = request.data.get('mostrar_elecciones')
+        if mostrar is None:
+            return Response({'error': 'Falta el campo mostrar_elecciones'}, status=status.HTTP_400_BAD_REQUEST)
+
+        quiniela.mostrar_elecciones = mostrar
+        quiniela.save()
+        return Response(QuinielaSerializer(quiniela).data)
 
 class UnirseQuinielaView(APIView):
     permission_classes = [IsAuthenticated]

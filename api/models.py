@@ -11,6 +11,7 @@ class Quiniela(models.Model):
     creada_por = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quinielas_creadas')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_limite = models.DateTimeField(null=True, blank=True)
+    mostrar_elecciones = models.BooleanField(default=False)  # <-- nuevo campo
 
 class Participante(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
