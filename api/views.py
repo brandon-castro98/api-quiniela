@@ -1,15 +1,131 @@
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, generics, permissions
+from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
+from django.shortcuts import get_object_or_404
+from django.db import transaction
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics, viewsets, permissions
 from django.utils import timezone
 from .models import Quiniela, Participante, Partido, Eleccion, Equipo
-from .serializer import EquipoSerializer, ResultadoPartidoSerializer, UserRegisterSerializer, QuinielaSerializer, ParticipanteSerializer, PartidoSerializer, EleccionCreateSerializer, FechaLimiteSerializer
+from .serializer import EquipoSerializer, ResultadoPartidoSerializer, UserRegisterSerializer, QuinielaSerializer, ParticipanteSerializer, PartidoSerializer, EleccionCreateSerializer, FechaLimiteSerializer, PartidoReadSerializer, PartidoWriteByIdSerializer, PartidoWriteByTextSerializer
 from .permissions import EsCreadorDeQuiniela
 
 # Create your views here.
+class PartidoListCreateForQuinielaView(generics.ListCreateAPIView):
+    """
+    GET  /api/quinielas/<quiniela_id>/partidos/  -> lista partidos de esa quiniela
+    POST /api/quinielas/<quiniela_id>/partidos/  -> crea partido en esa quiniela:
+        Opción A (por IDs):
+            { "equipo_local_id": 5, "equipo_visitante_id": 8, "fecha": "2025-09-05T19:00:00Z" }
+        Opción B (por texto: nombre/abreviatura):
+            { "equipo_local_abreviatura": "DAL", "equipo_visitante_abreviatura": "GB", "fecha": "..." }
+            o con ..._nombre en vez de ..._abreviatura
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        quiniela_id = self.kwargs['quiniela_id']
+        return Partido.objects.filter(quiniela_id=quiniela_id).order_by('fecha', 'id')
+
+    def get_serializer_class(self):
+        if self.request.method == 'GET':
+            return PartidoReadSerializer
+        return PartidoWriteByIdSerializer
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        quiniela = get_object_or_404(Quiniela, pk=self.kwargs['quiniela_id'])
+        if quiniela.creada_por != request.user and not request.user.is_staff:
+            raise PermissionDenied("Solo el creador de la quiniela puede agregar partidos.")
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        local = get_object_or_404(Equipo, pk=serializer.validated_data['equipo_local_id'])
+        visitante = get_object_or_404(Equipo, pk=serializer.validated_data['equipo_visitante_id'])
+        fecha = serializer.validated_data['fecha']
+
+        if local.id == visitante.id:
+            raise ValidationError('El equipo local y visitante no pueden ser el mismo.')
+
+        partido = Partido.objects.create(
+            quiniela=quiniela,
+            equipo_local=local,
+            equipo_visitante=visitante,
+            fecha=fecha
+        )
+
+        out = PartidoReadSerializer(partido).data
+        return Response(out, status=201)
+
+
+class PartidoResultadoView(generics.GenericAPIView):
+    """
+    POST /api/quinielas/<quiniela_id>/partidos/<partido_id>/resultado/
+    Body (una de estas variantes):
+      - { "resultado_equipo_id": 8 }
+      - { "resultado_abreviatura": "GB" }
+      - { "resultado_nombre": "Green Bay Packers" }
+    Reglas:
+      - Solo creador de la quiniela o staff puede cargar resultado
+      - El ganador debe ser uno de los dos equipos del partido
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        quiniela_id = self.kwargs['quiniela_id']
+        partido_id = self.kwargs['partido_id']
+
+        partido = (Partido.objects
+                   .select_related('quiniela', 'equipo_local', 'equipo_visitante')
+                   .filter(id=partido_id, quiniela_id=quiniela_id)
+                   .first())
+        if not partido:
+            raise NotFound("Partido no encontrado en esta quiniela.")
+
+        # Permisos
+        if partido.quiniela.creada_por != request.user and not request.user.is_staff:
+            raise PermissionDenied("No tienes permisos para cargar el resultado de este partido.")
+
+        data = request.data
+
+        # Resolver ganador
+        ganador = None
+        if 'resultado_equipo_id' in data:
+            try:
+                ganador = Equipo.objects.get(pk=data['resultado_equipo_id'])
+            except Equipo.DoesNotExist:
+                raise ValidationError({'resultado_equipo_id': 'Equipo no existe.'})
+        elif 'resultado_abreviatura' in data:
+            try:
+                ganador = Equipo.objects.get(abreviatura__iexact=str(data['resultado_abreviatura']).strip())
+            except Equipo.DoesNotExist:
+                raise ValidationError({'resultado_abreviatura': 'Equipo no existe.'})
+        elif 'resultado_nombre' in data:
+            try:
+                ganador = Equipo.objects.get(nombre__iexact=str(data['resultado_nombre']).strip())
+            except Equipo.DoesNotExist:
+                raise ValidationError({'resultado_nombre': 'Equipo no existe.'})
+        else:
+            raise ValidationError('Debes enviar resultado_equipo_id o resultado_abreviatura o resultado_nombre.')
+
+        # Validar que sea uno de los dos equipos del partido
+        if ganador.id not in (partido.equipo_local_id, partido.equipo_visitante_id):
+            raise ValidationError('El resultado debe ser uno de los equipos que jugaron este partido.')
+
+        # CORRIGE AQUÍ: Guarda la abreviatura (o nombre, o id, según tu lógica)
+        partido.resultado_real = ganador  # <-- Cambia esto
+        partido.save(update_fields=['resultado_real'])
+
+        return Response(PartidoReadSerializer(partido).data, status=200)
+
+
+
+
+
+
 
 class EquipoViewSet(viewsets.ModelViewSet):
     queryset = Equipo.objects.all()
@@ -128,14 +244,14 @@ class MisEleccionesView(APIView):
         except Participante.DoesNotExist:
             return Response({"detail": "No participas en esta quiniela."}, status=400)
 
-        elecciones = Eleccion.objects.filter(participante=participante).select_related('partido')
+        elecciones = Eleccion.objects.filter(participante=participante).select_related('partido', 'equipo_elegido', 'partido__equipo_local', 'partido__equipo_visitante', 'partido__resultado_real')
         data = [
             {
                 "partido_id": e.partido.id,
-                "equipo_local": e.partido.equipo_local,
-                "equipo_visitante": e.partido.equipo_visitante,
-                "equipo_elegido": e.equipo_elegido,
-                "resultado_real": e.partido.resultado_real
+                "equipo_local": EquipoSerializer(e.partido.equipo_local).data,
+                "equipo_visitante": EquipoSerializer(e.partido.equipo_visitante).data,
+                "equipo_elegido": EquipoSerializer(e.equipo_elegido).data,
+                "resultado_real": EquipoSerializer(e.partido.resultado_real).data if e.partido.resultado_real else None
             }
             for e in elecciones
         ]
@@ -152,16 +268,18 @@ class EleccionesDeOtrosQuinielaView(APIView):
         data = []
 
         for participante in participantes:
-            elecciones = Eleccion.objects.filter(participante=participante).select_related('partido')
+            elecciones = Eleccion.objects.filter(participante=participante).select_related(
+        'partido', 'equipo_elegido', 'partido__equipo_local', 'partido__equipo_visitante', 'partido__resultado_real'
+    )
             data.append({
                 "participante": participante.usuario.username,
                 "elecciones": [
                     {
                         "partido_id": e.partido.id,
-                        "equipo_local": e.partido.equipo_local,
-                        "equipo_visitante": e.partido.equipo_visitante,
-                        "equipo_elegido": e.equipo_elegido,
-                        "resultado_real": e.partido.resultado_real
+                "equipo_local": EquipoSerializer(e.partido.equipo_local).data,
+                "equipo_visitante": EquipoSerializer(e.partido.equipo_visitante).data,
+                "equipo_elegido": EquipoSerializer(e.equipo_elegido).data,
+                "resultado_real": EquipoSerializer(e.partido.resultado_real).data if e.partido.resultado_real else None
                     } for e in elecciones
                 ]
             })
@@ -246,3 +364,20 @@ class RankingQuinielaView(APIView):
         resultados.sort(key=lambda x: x["aciertos"], reverse=True)
 
         return Response(resultados)
+    
+class CambiarMostrarEleccionesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, quiniela_id):
+        try:
+            quiniela = Quiniela.objects.get(pk=quiniela_id)
+        except Quiniela.DoesNotExist:
+            return Response({'error': 'Quiniela no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+        mostrar = request.data.get('mostrar_elecciones')
+        if mostrar is None:
+            return Response({'error': 'Falta el campo mostrar_elecciones'}, status=status.HTTP_400_BAD_REQUEST)
+
+        quiniela.mostrar_elecciones = mostrar
+        quiniela.save()
+        return Response({'mostrar_elecciones': quiniela.mostrar_elecciones}, status=status.HTTP_200_OK)

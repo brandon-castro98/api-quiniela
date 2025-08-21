@@ -11,6 +11,7 @@ class Quiniela(models.Model):
     creada_por = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quinielas_creadas')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_limite = models.DateTimeField(null=True, blank=True)
+    mostrar_elecciones = models.BooleanField(default=False)
 
 class Participante(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -34,7 +35,7 @@ class Partido(models.Model):
     equipo_local = models.ForeignKey(Equipo, on_delete=models.CASCADE, related_name="partidos_local")
     equipo_visitante = models.ForeignKey(Equipo, on_delete=models.CASCADE, related_name="partidos_visitante")
     fecha = models.DateTimeField(null=True, blank=True)
-    resultado_real = models.CharField(max_length=50, null=True, blank=True)
+    resultado_real = models.ForeignKey(Equipo, null=True, blank=True, on_delete=models.SET_NULL, related_name='partidos_ganados')
 
     def __str__(self):
         return f"{self.equipo_local} vs {self.equipo_visitante} - {self.quiniela.nombre}"
@@ -42,7 +43,7 @@ class Partido(models.Model):
 class Eleccion(models.Model):
     participante = models.ForeignKey(Participante, related_name='elecciones', on_delete=models.CASCADE)
     partido = models.ForeignKey(Partido, related_name='elecciones', on_delete=models.CASCADE)
-    equipo_elegido = models.CharField(max_length=100)
+    equipo_elegido = models.ForeignKey(Equipo, on_delete=models.CASCADE)
 
     class Meta:
         unique_together = ('participante', 'partido')  # No puede votar dos veces el mismo participante por el mismo partido

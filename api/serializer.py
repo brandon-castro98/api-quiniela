@@ -22,7 +22,32 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 class EquipoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Equipo
-        fields = '__all__'
+        fields = ['id', 'nombre', 'abreviatura', 'logo_url']
+
+# Lectura de partido (detallado con equipos y resultado)
+class PartidoReadSerializer(serializers.ModelSerializer):
+    equipo_local = EquipoSerializer()
+    equipo_visitante = EquipoSerializer()
+    resultado_real = EquipoSerializer()
+
+    class Meta:
+        model = Partido
+        fields = ['id', 'fecha', 'equipo_local', 'equipo_visitante', 'resultado_real']
+
+# Escritura por IDs (más estricto/rápido)
+class PartidoWriteByIdSerializer(serializers.Serializer):
+    equipo_local_id = serializers.IntegerField()
+    equipo_visitante_id = serializers.IntegerField()
+    fecha = serializers.DateTimeField()
+
+# Escritura por texto (fallback si hoy tu front escribe nombres/abrev)
+class PartidoWriteByTextSerializer(serializers.Serializer):
+    # Puedes mandar nombres o abreviaturas
+    equipo_local_nombre = serializers.CharField(required=False)
+    equipo_local_abreviatura = serializers.CharField(required=False)
+    equipo_visitante_nombre = serializers.CharField(required=False)
+    equipo_visitante_abreviatura = serializers.CharField(required=False)
+    fecha = serializers.DateTimeField()
     
 class PartidoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -30,13 +55,14 @@ class PartidoSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class EleccionSerializer(serializers.ModelSerializer):
+    equipo_elegido = EquipoSerializer()
     class Meta:
         model = Eleccion
-        fields = ['id', 'partido', 'equipo_seleccionado']
+        fields = ['id', 'partido', 'equipo_elegido']
 
 class EleccionInputSerializer(serializers.Serializer):
     partido_id = serializers.IntegerField()
-    equipo_elegido = serializers.CharField()
+    equipo_elegido = serializers.IntegerField()
 
 class EleccionCreateSerializer(serializers.Serializer):
     quiniela_id = serializers.IntegerField()
@@ -67,10 +93,11 @@ class EleccionCreateSerializer(serializers.Serializer):
 
         objetos_creados = []
         for e in elecciones:
+            equipo = Equipo.objects.get(pk=e['equipo_elegido'])
             eleccion, created = Eleccion.objects.update_or_create(
                 participante=participante,
                 partido_id=e['partido_id'],
-                defaults={'equipo_elegido': e['equipo_elegido']}
+                defaults={'equipo_elegido': equipo}
             )
             objetos_creados.append(eleccion)
 
@@ -80,10 +107,12 @@ class QuinielaSerializer(serializers.ModelSerializer):
      creada_por = serializers.ReadOnlyField(source='creada_por.username')
      participantes = serializers.StringRelatedField(many=True, read_only=True)
      partidos = PartidoSerializer(many=True, read_only=True)
+     mostrar_elecciones = serializers.BooleanField(default=False)
+
 
      class Meta:
         model = Quiniela
-        fields = ['id', 'nombre', 'apuesta_individual', 'creada_por', 'fecha_creacion', 'participantes', 'partidos']
+        fields = ['id', 'nombre', 'apuesta_individual', 'creada_por', 'fecha_creacion', 'participantes', 'partidos', 'mostrar_elecciones']
 
 class ParticipanteSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='usuario.username')
