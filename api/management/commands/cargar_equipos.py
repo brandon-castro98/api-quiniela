@@ -19,7 +19,7 @@ EQUIPOS = [
     {"nombre": "Jacksonville Jaguars", "abreviatura": "JAX", "ciudad": "Jacksonville", "logo_url": "https://upload.wikimedia.org/wikipedia/en/7/74/Jacksonville_Jaguars_logo.svg"},
     {"nombre": "Kansas City Chiefs", "abreviatura": "KC", "ciudad": "Kansas City", "logo_url": "https://upload.wikimedia.org/wikipedia/en/e/e1/Kansas_City_Chiefs_logo.svg"},
     {"nombre": "Las Vegas Raiders", "abreviatura": "LV", "ciudad": "Las Vegas", "logo_url": "https://upload.wikimedia.org/wikipedia/en/4/48/Las_Vegas_Raiders_logo.svg"},
-    {"nombre": "Los Angeles Chargers", "abreviatura": "LAC", "ciudad": "Los Angeles", "logo_url": "https://upload.wikimedia.org/wikipedia/en/7/72/Los_Angeles_Chargers_logo.svg"},
+    {"nombre": "Los Angeles Chargers", "abreviatura": "LAC", "ciudad": "Los Angeles", "logo_url": "https://upload.wikimedia.org/wikipedia/commons/a/a6/Los_Angeles_Chargers_logo.svg"},
     {"nombre": "Los Angeles Rams", "abreviatura": "LAR", "ciudad": "Los Angeles", "logo_url": "https://upload.wikimedia.org/wikipedia/en/8/8a/Los_Angeles_Rams_logo.svg"},
     {"nombre": "Miami Dolphins", "abreviatura": "MIA", "ciudad": "Miami", "logo_url": "https://upload.wikimedia.org/wikipedia/en/3/37/Miami_Dolphins_logo.svg"},
     {"nombre": "Minnesota Vikings", "abreviatura": "MIN", "ciudad": "Minnesota", "logo_url": "https://upload.wikimedia.org/wikipedia/en/4/48/Minnesota_Vikings_logo.svg"},
@@ -29,31 +29,28 @@ EQUIPOS = [
     {"nombre": "New York Jets", "abreviatura": "NYJ", "ciudad": "New York", "logo_url": "https://upload.wikimedia.org/wikipedia/en/6/6b/New_York_Jets_logo.svg"},
     {"nombre": "Philadelphia Eagles", "abreviatura": "PHI", "ciudad": "Philadelphia", "logo_url": "https://upload.wikimedia.org/wikipedia/en/8/8e/Philadelphia_Eagles_logo.svg"},
     {"nombre": "Pittsburgh Steelers", "abreviatura": "PIT", "ciudad": "Pittsburgh", "logo_url": "https://upload.wikimedia.org/wikipedia/commons/d/de/Pittsburgh_Steelers_logo.svg"},
-    {"nombre": "San Francisco 49ers", "abreviatura": "SF", "ciudad": "San Francisco", "logo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3e/San_Francisco_49ers_logo.svg"},
+    {"nombre": "San Francisco 49ers", "abreviatura": "SF", "ciudad": "San Francisco", "logo_url": "https://upload.wikimedia.org/wikipedia/commons/archive/3/3a/20250118072730%21San_Francisco_49ers_logo.svg"},
     {"nombre": "Seattle Seahawks", "abreviatura": "SEA", "ciudad": "Seattle", "logo_url": "https://upload.wikimedia.org/wikipedia/en/8/8e/Seattle_Seahawks_logo.svg"},
     {"nombre": "Tampa Bay Buccaneers", "abreviatura": "TB", "ciudad": "Tampa Bay", "logo_url": "https://upload.wikimedia.org/wikipedia/en/a/a2/Tampa_Bay_Buccaneers_logo.svg"},
     {"nombre": "Tennessee Titans", "abreviatura": "TEN", "ciudad": "Tennessee", "logo_url": "https://upload.wikimedia.org/wikipedia/en/c/c1/Tennessee_Titans_logo.svg"},
-    {"nombre": "Washington Commanders", "abreviatura": "WAS", "ciudad": "Washington", "logo_url": "https://upload.wikimedia.org/wikipedia/commons/8/89/Washington_Commanders_logo.svg"}
+    {"nombre": "Washington Commanders", "abreviatura": "WAS", "ciudad": "Washington", "logo_url": "https://upload.wikimedia.org/wikipedia/commons/0/0c/Washington_Commanders_logo.svg"}
 ]
 
 class Command(BaseCommand):
     help = "Carga/actualiza los 32 equipos de la NFL con logo y ciudad."
 
     def handle(self, *args, **options):
-        creados, actualizados = 0, 0
+        actualizados = 0
         for e in EQUIPOS:
-            obj, created = Equipo.objects.update_or_create(
-                abreviatura=e["abreviatura"],
-                defaults={
-                    "nombre": e["nombre"],
-                    "ciudad": e["ciudad"],
-                    "logo_url": e["logo_url"],
-                },
-            )
-            if created:
-                creados += 1
-            else:
-                actualizados += 1
+            try:
+                equipo = Equipo.objects.get(abreviatura=e["abreviatura"])
+                if equipo.logo_url != e["logo_url"]:
+                    equipo.logo_url = e["logo_url"]
+                    equipo.save(update_fields=["logo_url"])
+                    actualizados += 1
+            except Equipo.DoesNotExist:
+                # No lo crees, solo actualiza los existentes
+                continue
         self.stdout.write(self.style.SUCCESS(
-            f"Equipos listos. Creados: {creados}, Actualizados: {actualizados}"
+            f"Equipos actualizados: {actualizados}"
         ))
