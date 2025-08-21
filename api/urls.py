@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import CambiarMostrarEleccionesView, EquipoViewSet, RegistrarResultadoPartidoView, RankingQuinielaView, HacerEleccionView, EditarFechaLimiteView, EleccionesDeOtrosQuinielaView, EleccionCreateView, RegisterView, QuinielaListCreateView, UnirseQuinielaView, QuinielaRetrieveDestroyView, CrearPartidoView, DetalleQuinielaView, MisEleccionesView, PartidoListCreateForQuinielaView, PartidoResultadoView
+
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 router = DefaultRouter()
 router.register(r'equipos', EquipoViewSet, basename='equipos')
@@ -10,6 +11,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('quinielas/<int:pk>/cambiar-mostrar-elecciones/', CambiarMostrarEleccionesView.as_view(), name='cambiar-mostrar-elecciones'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('quinielas/', QuinielaListCreateView.as_view(), name='quinielas'),
     path('quinielas/<int:quiniela_id>/unirse/', UnirseQuinielaView.as_view(), name='unirse-quiniela'),

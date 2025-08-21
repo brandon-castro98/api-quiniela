@@ -15,6 +15,7 @@ from pathlib import Path
 import os
 from decouple import config
 import dj_database_url
+import sys
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -24,7 +25,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('SECRET_KEY', default='kvhkjae4JrEsIxoOY4B/jQQ8Lb8yijZHvp2RpuYG2hh6tc+2Gl/NgLDezTZQjBtL')
-DEBUG = config('DEBUG', default=False, cast=bool)
+
+DEBUG = False  # 🔹 solo temporal para debug en producción
 
 ALLOWED_HOSTS = ['*','https://api-quiniela-phiv.onrender.com']
 
