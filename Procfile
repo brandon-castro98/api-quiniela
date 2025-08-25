@@ -1,1 +1,1 @@
-web: bash start.sh
+web: python manage.py migrate && python manage.py createsuperuser --noinput || true && gunicorn quinielas_backend.wsgi
