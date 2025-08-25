@@ -264,7 +264,7 @@ class QuinielaListCreateView(generics.ListCreateAPIView):
         # Enviar notificación push a todos los usuarios registrados
         try:
             title = f"🏈 Nueva Quiniela: {quiniela.nombre}"
-            body = f"Se ha creado una nueva quiniela con apuesta de \${quiniela.apuesta_individual}"
+            body = f"Se ha creado una nueva quiniela con apuesta de ${quiniela.apuesta_individual}"
             data = {
                 'type': 'nueva_quiniela',
                 'quiniela_id': quiniela.id,
