@@ -29,3 +29,34 @@ ENV/
 
 # Configuración local
 .env
+.env.local
+.env.production
+
+# Firebase
+firebase-credentials.json
+firebase-credentials-*.json
+*.json
+
+# Logs
+logs/
+*.log
+
+# Archivos de configuración sensibles
+firebase-config.json
+service-account-*.json
+
+# Archivos compilados de Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Archivos de migración compilados
+**/migrations/__pycache__/
+**/migrations/*.pyc
+
+# Archivos de management compilados
+**/management/__pycache__/
+**/management/*.pyc
+**/management/commands/__pycache__/
+**/management/commands/*.pyc

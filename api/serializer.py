@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from .models import Quiniela, Participante, Partido, Eleccion, Equipo
 from django.contrib.auth import get_user_model
+from .models import FCMToken
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -40,15 +42,6 @@ class PartidoWriteByIdSerializer(serializers.Serializer):
     equipo_visitante_id = serializers.IntegerField()
     fecha = serializers.DateTimeField()
 
-# Escritura por texto (fallback si hoy tu front escribe nombres/abrev)
-class PartidoWriteByTextSerializer(serializers.Serializer):
-    # Puedes mandar nombres o abreviaturas
-    equipo_local_nombre = serializers.CharField(required=False)
-    equipo_local_abreviatura = serializers.CharField(required=False)
-    equipo_visitante_nombre = serializers.CharField(required=False)
-    equipo_visitante_abreviatura = serializers.CharField(required=False)
-    fecha = serializers.DateTimeField()
-    
 class PartidoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Partido
@@ -103,30 +96,60 @@ class EleccionCreateSerializer(serializers.Serializer):
 
         return objetos_creados
 
-class QuinielaSerializer(serializers.ModelSerializer):
-     creada_por = serializers.ReadOnlyField(source='creada_por.username')
-     participantes = serializers.StringRelatedField(many=True, read_only=True)
-     partidos = PartidoSerializer(many=True, read_only=True)
-     mostrar_elecciones = serializers.BooleanField(default=False)
-
-
-     class Meta:
-        model = Quiniela
-        fields = ['id', 'nombre', 'apuesta_individual', 'creada_por', 'fecha_creacion', 'participantes', 'partidos', 'mostrar_elecciones']
-
 class ParticipanteSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='usuario.username')
-
+    usuario = serializers.StringRelatedField()
+    
     class Meta:
         model = Participante
-        fields = ['id', 'username', 'ya_selecciono']
+        fields = ['id', 'usuario', 'ya_selecciono']
+
+class QuinielaSerializer(serializers.ModelSerializer):
+    creada_por = serializers.StringRelatedField()
+    participantes = ParticipanteSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Quiniela
+        fields = ['id', 'nombre', 'apuesta_individual', 'creada_por', 'fecha_creacion', 'fecha_limite', 'mostrar_elecciones', 'participantes']
 
 class FechaLimiteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiniela
         fields = ['fecha_limite']
 
-class ResultadoPartidoSerializer(serializers.ModelSerializer):
+class FCMTokenSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Partido
-        fields = ['resultado_real']
+        model = FCMToken
+        fields = ['id', 'token', 'dispositivo', 'plataforma', 'activo', 'fecha_creacion', 'ultima_actividad']
+        read_only_fields = ['id', 'fecha_creacion', 'ultima_actividad']
+
+    def create(self, validated_data):
+        validated_data['usuario'] = self.context['request'].user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        instance.ultima_actividad = timezone.now()
+        return super().update(instance, validated_data)
+
+class FCMTokenCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FCMToken
+        fields = ['token', 'dispositivo', 'plataforma']
+
+    def create(self, validated_data):
+        validated_data['usuario'] = self.context['request'].user
+        
+        # Verificar si ya existe un token para este usuario y dispositivo
+        existing_token = FCMToken.objects.filter(
+            usuario=validated_data['usuario'],
+            token=validated_data['token']
+        ).first()
+        
+        if existing_token:
+            # Actualizar token existente
+            existing_token.dispositivo = validated_data.get('dispositivo', existing_token.dispositivo)
+            existing_token.plataforma = validated_data.get('plataforma', existing_token.plataforma)
+            existing_token.activo = True
+            existing_token.save()
+            return existing_token
+        
+        return super().create(validated_data)

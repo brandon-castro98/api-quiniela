@@ -50,4 +50,29 @@ class Eleccion(models.Model):
 
     def __str__(self):
         return f"{self.participante.usuario.username} eligió {self.equipo_elegido} en {self.partido}"
+
+class FCMToken(models.Model):
+    """
+    Modelo para almacenar tokens de Firebase Cloud Messaging de los usuarios
+    """
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='fcm_tokens')
+    token = models.CharField(max_length=500, unique=True)
+    dispositivo = models.CharField(max_length=100, blank=True, null=True)
+    plataforma = models.CharField(max_length=20, choices=[
+        ('android', 'Android'),
+        ('ios', 'iOS'),
+        ('web', 'Web'),
+        ('unknown', 'Desconocido')
+    ], default='unknown')
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    ultima_actividad = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Token FCM'
+        verbose_name_plural = 'Tokens FCM'
+        ordering = ['-ultima_actividad']
+
+    def __str__(self):
+        return f"{self.usuario.username} - {self.plataforma} ({self.dispositivo})"
     
