@@ -180,8 +180,8 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más det
 
 ## 📞 Soporte
 
-- **Issues**: [GitHub Issues](https://github.com/brandon-castro98/api-quiniela/issues)
 - **Documentación**: Ver archivos en `docs/`
+- **Contacto Directo**: jonathan_works98@outlook.com
 
 ---
 
