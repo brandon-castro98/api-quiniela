@@ -1,1 +1,1 @@
-web: python manage.py migrate && python manage.py createsuperuser --noinput || true && gunicorn quinielas_backend.wsgi
+web: python manage.py migrate --fake-initial && python manage.py migrate api && python manage.py cargar_equipos && python manage.py createsuperuser --noinput || true && gunicorn quinielas_backend.wsgi
