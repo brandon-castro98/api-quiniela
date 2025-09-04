@@ -1,5 +1,6 @@
 #!/bin/bash
 python manage.py migrate
+python manage.py cargar_equipos
 python manage.py createsuperuser --noinput || true
 gunicorn quinielas_backend.wsgi
 ```

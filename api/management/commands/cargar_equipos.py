@@ -40,6 +40,7 @@ class Command(BaseCommand):
     help = "Carga/actualiza los 32 equipos de la NFL con logo y ciudad."
 
     def handle(self, *args, **options):
+        creados = 0
         actualizados = 0
         for e in EQUIPOS:
             try:
@@ -49,8 +50,9 @@ class Command(BaseCommand):
                     equipo.save(update_fields=["logo_url"])
                     actualizados += 1
             except Equipo.DoesNotExist:
-                # No lo crees, solo actualiza los existentes
-                continue
+                # Crear el equipo si no existe
+                Equipo.objects.create(**e)
+                creados += 1
         self.stdout.write(self.style.SUCCESS(
-            f"Equipos actualizados: {actualizados}"
+            f"Equipos creados: {creados}, actualizados: {actualizados}"
         ))
