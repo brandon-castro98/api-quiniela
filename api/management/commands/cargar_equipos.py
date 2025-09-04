@@ -42,17 +42,59 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         creados = 0
         actualizados = 0
+        
         for e in EQUIPOS:
             try:
+                # Intentar obtener el equipo existente
                 equipo = Equipo.objects.get(abreviatura=e["abreviatura"])
-                if equipo.logo_url != e["logo_url"]:
+                
+                # Verificar si necesita actualización
+                if (equipo.nombre != e["nombre"] or 
+                    equipo.ciudad != e["ciudad"] or 
+                    equipo.logo_url != e["logo_url"]):
+                    
+                    equipo.nombre = e["nombre"]
+                    equipo.ciudad = e["ciudad"]
                     equipo.logo_url = e["logo_url"]
-                    equipo.save(update_fields=["logo_url"])
+                    equipo.save()
                     actualizados += 1
+                    self.stdout.write(f"✅ Actualizado: {equipo.nombre} ({equipo.abreviatura})")
+                
             except Equipo.DoesNotExist:
+<<<<<<< HEAD
                 # Crear el equipo si no existe
                 Equipo.objects.create(**e)
                 creados += 1
         self.stdout.write(self.style.SUCCESS(
             f"Equipos creados: {creados}, actualizados: {actualizados}"
         ))
+=======
+                # Crear nuevo equipo si no existe
+                Equipo.objects.create(
+                    nombre=e["nombre"],
+                    abreviatura=e["abreviatura"],
+                    ciudad=e["ciudad"],
+                    logo_url=e["logo_url"]
+                )
+                creados += 1
+                self.stdout.write(f"🆕 Creado: {e['nombre']} ({e['abreviatura']})")
+        
+        # Resumen final
+        self.stdout.write(self.style.SUCCESS(
+            f"\n🎯 RESUMEN: {creados} equipos creados, {actualizados} actualizados"
+        ))
+        
+        total_equipos = Equipo.objects.count()
+        self.stdout.write(self.style.SUCCESS(
+            f"🎯 Total de equipos en BD: {total_equipos}/32"
+        ))
+        
+        if total_equipos == 32:
+            self.stdout.write(self.style.SUCCESS(
+                "✅ ¡Todos los equipos NFL están listos!"
+            ))
+        else:
+            self.stdout.write(self.style.WARNING(
+                f"⚠️  Se esperaban 32 equipos, pero hay {total_equipos}"
+            ))
+>>>>>>> c5bf0359c1ba20429cc9e3cad0748a2081b1e7c2

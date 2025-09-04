@@ -1,2 +1,1 @@
-web: gunicorn quinielas_backend.wsgi
-web: bash start.sh
+web: python manage.py migrate api --fake-initial || python manage.py migrate api && python manage.py cargar_equipos && gunicorn quinielas_backend.wsgi

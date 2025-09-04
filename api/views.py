@@ -9,8 +9,22 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics, viewsets, permissions
 from django.utils import timezone
 from .models import Quiniela, Participante, Partido, Eleccion, Equipo
-from .serializer import EquipoSerializer, ResultadoPartidoSerializer, UserRegisterSerializer, QuinielaSerializer, ParticipanteSerializer, PartidoSerializer, EleccionCreateSerializer, FechaLimiteSerializer, PartidoReadSerializer, PartidoWriteByIdSerializer, PartidoWriteByTextSerializer
+from .serializer import (
+    EquipoSerializer, UserRegisterSerializer, QuinielaSerializer, 
+    ParticipanteSerializer, PartidoSerializer, EleccionCreateSerializer, 
+    FechaLimiteSerializer, PartidoReadSerializer, PartidoWriteByIdSerializer
+)
 from .permissions import EsCreadorDeQuiniela
+from .models import FCMToken
+from .serializer import FCMTokenCreateSerializer, FCMTokenSerializer
+import logging
+from datetime import datetime
+from .services import FCMService
+
+logger = logging.getLogger(__name__)
+
+# Instancia global del servicio FCM
+fcm_service = FCMService()
 
 # Create your views here.
 class PartidoListCreateForQuinielaView(generics.ListCreateAPIView):
@@ -115,16 +129,41 @@ class PartidoResultadoView(generics.GenericAPIView):
         if ganador.id not in (partido.equipo_local_id, partido.equipo_visitante_id):
             raise ValidationError('El resultado debe ser uno de los equipos que jugaron este partido.')
 
-        # CORRIGE AQUÍ: Guarda la abreviatura (o nombre, o id, según tu lógica)
-        partido.resultado_real = ganador  # <-- Cambia esto
+        # Guardar el resultado del partido
+        partido.resultado_real = ganador
         partido.save(update_fields=['resultado_real'])
 
+        # Enviar notificación push a todos los participantes de la quiniela
+        try:
+            # Crear mensaje de notificación
+            title = f"¡Resultado del partido!"
+            body = f"{partido.equipo_local.abreviatura} vs {partido.equipo_visitante.abreviatura}: Ganó {ganador.abreviatura}"
+            
+            # Datos adicionales para la notificación
+            notification_data = {
+                'tipo': 'resultado_partido',
+                'quiniela_id': str(quiniela_id),
+                'partido_id': str(partido_id),
+                'ganador_id': str(ganador.id),
+                'ganador_nombre': ganador.nombre,
+                'ganador_abreviatura': ganador.abreviatura,
+                'equipo_local': partido.equipo_local.abreviatura,
+                'equipo_visitante': partido.equipo_visitante.abreviatura
+            }
+            
+            # Enviar notificación a todos los participantes de la quiniela
+            fcm_service.send_notification_to_quiniela_participants(
+                quiniela_id=quiniela_id,
+                title=title,
+                body=body,
+                data=notification_data
+            )
+            
+        except Exception as e:
+            # Log del error pero no fallar la operación principal
+            logger.error(f"Error al enviar notificación push: {e}")
+
         return Response(PartidoReadSerializer(partido).data, status=200)
-
-
-
-
-
 
 
 class EquipoViewSet(viewsets.ModelViewSet):
@@ -155,7 +194,7 @@ class CambiarMostrarEleccionesView(APIView):
 
         quiniela.mostrar_elecciones = mostrar
         quiniela.save()
-        return Response(QuinielaSerializer(quiniela).data)
+        return Response({'mostrar_elecciones': quiniela.mostrar_elecciones}, status=status.HTTP_200_OK)
 
 class UnirseQuinielaView(APIView):
     permission_classes = [IsAuthenticated]
@@ -173,6 +212,28 @@ class UnirseQuinielaView(APIView):
         if not already_joined:
             Participante.objects.create(usuario=user, quiniela=quiniela)
             mensaje = f"{user.username} se unió a la quiniela '{quiniela.nombre}'"
+            
+            # Enviar notificación push al creador de la quiniela
+            try:
+                if quiniela.creada_por != user:  # No notificar si se une el creador
+                    title = f"👥 Nuevo Participante en {quiniela.nombre}"
+                    body = f"{user.username} se ha unido a tu quiniela"
+                    data = {
+                        'type': 'nuevo_participante',
+                        'quiniela_id': quiniela.id,
+                        'quiniela_nombre': quiniela.nombre,
+                        'usuario_nuevo': user.username
+                    }
+                    
+                    fcm_service.send_notification_to_user(
+                        user_id=quiniela.creada_por.id,
+                        title=title,
+                        body=body,
+                        data=data
+                    )
+                    logger.info(f"Notificación de nuevo participante enviada a {quiniela.creada_por.username}")
+            except Exception as e:
+                logger.error(f"Error enviando notificación de nuevo participante: {e}")
         else:
             mensaje = f"{user.username} ya está unido a la quiniela '{quiniela.nombre}'"
 
@@ -192,6 +253,33 @@ class QuinielaListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(creada_por=self.request.user)
+        
+        # Crear participante automáticamente
+        quiniela = serializer.instance
+        Participante.objects.create(
+            usuario=self.request.user,
+            quiniela=quiniela
+        )
+        
+        # Enviar notificación push a todos los usuarios registrados
+        try:
+            title = f"🏈 Nueva Quiniela: {quiniela.nombre}"
+            body = f"Se ha creado una nueva quiniela con apuesta de ${quiniela.apuesta_individual}"
+            data = {
+                'type': 'nueva_quiniela',
+                'quiniela_id': quiniela.id,
+                'quiniela_nombre': quiniela.nombre,
+                'apuesta': str(quiniela.apuesta_individual)
+            }
+            
+            fcm_service.send_notification_to_all_users(
+                title=title,
+                body=body,
+                data=data
+            )
+            logger.info(f"Notificación de nueva quiniela enviada: {quiniela.nombre}")
+        except Exception as e:
+            logger.error(f"Error enviando notificación de nueva quiniela: {e}")
 
 class QuinielaRetrieveDestroyView(generics.RetrieveDestroyAPIView):
     queryset = Quiniela.objects.all()
@@ -206,28 +294,6 @@ class QuinielaRetrieveDestroyView(generics.RetrieveDestroyAPIView):
 
         return self.destroy(request, *args, **kwargs)
 
-class CrearPartidoView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, quiniela_id):
-        try:
-            quiniela = Quiniela.objects.get(id=quiniela_id)
-        except Quiniela.DoesNotExist:
-            return Response({"error": "Quiniela no encontrada"}, status=404)
-
-        # Solo el creador puede crear partidos
-        if quiniela.creada_por != request.user:
-            return Response({"error": "No tienes permiso para agregar partidos a esta quiniela"}, status=403)
-
-        data = request.data.copy()
-        data["quiniela"] = quiniela.id
-
-        serializer = PartidoSerializer(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
-    
 class DetalleQuinielaView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -247,6 +313,32 @@ class EleccionCreateView(APIView):
         serializer = EleccionCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             elecciones = serializer.save()
+            
+            # Enviar notificación push al creador de la quiniela
+            try:
+                quiniela_id = serializer.validated_data['quiniela_id']
+                quiniela = Quiniela.objects.get(id=quiniela_id)
+                
+                if quiniela.creada_por != request.user:  # No notificar si el creador hace sus elecciones
+                    title = f"🎯 Elecciones Realizadas en {quiniela.nombre}"
+                    body = f"{request.user.username} ha realizado sus elecciones"
+                    data = {
+                        'type': 'elecciones_realizadas',
+                        'quiniela_id': quiniela_id,
+                        'quiniela_nombre': quiniela.nombre,
+                        'usuario': request.user.username
+                    }
+                    
+                    fcm_service.send_notification_to_user(
+                        user_id=quiniela.creada_por.id,
+                        title=title,
+                        body=body,
+                        data=data
+                    )
+                    logger.info(f"Notificación de elecciones realizadas enviada a {quiniela.creada_por.username}")
+            except Exception as e:
+                logger.error(f"Error enviando notificación de elecciones: {e}")
+            
             return Response({"detalle": "Elecciones guardadas correctamente."}, status=201)
         return Response(serializer.errors, status=400)
 
@@ -308,40 +400,6 @@ class EditarFechaLimiteView(generics.UpdateAPIView):
     serializer_class = FechaLimiteSerializer
     permission_classes = [IsAuthenticated, EsCreadorDeQuiniela]
 
-class HacerEleccionView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, quiniela_id, partido_id):
-        try:
-            quiniela = Quiniela.objects.get(id=quiniela_id)
-        except Quiniela.DoesNotExist:
-            return Response({"detail": "Quiniela no encontrada."}, status=404)
-
-        if quiniela.fecha_limite and timezone.now() > quiniela.fecha_limite:
-            return Response({"detail": "Ya no se pueden hacer elecciones. Fecha límite superada."}, status=403)
-
-        # lógica para guardar elección aquí...
-
-        return Response({"detail": "Elección registrada."})
-    
-class RegistrarResultadoPartidoView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def patch(self, request, partido_id):
-        try:
-            partido = Partido.objects.select_related('quiniela').get(id=partido_id)
-        except Partido.DoesNotExist:
-            return Response({"error": "Partido no encontrado"}, status=404)
-
-        if partido.quiniela.creada_por != request.user:
-            return Response({"detail": "No tienes permiso para editar este resultado."}, status=403)
-
-        serializer = ResultadoPartidoSerializer(partido, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"detalle": "Resultado guardado correctamente."})
-        return Response(serializer.errors, status=400)
-    
 class RankingQuinielaView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -381,20 +439,137 @@ class RankingQuinielaView(APIView):
         resultados.sort(key=lambda x: x["aciertos"], reverse=True)
 
         return Response(resultados)
-    
-class CambiarMostrarEleccionesView(APIView):
+
+class FCMTokenView(APIView):
+    """
+    Vista para manejar tokens FCM de usuarios
+    """
     permission_classes = [IsAuthenticated]
-
-    def patch(self, request, quiniela_id):
+    
+    def post(self, request):
+        """
+        POST /api/fcm-tokens/
+        Registra o actualiza un token FCM para el usuario autenticado
+        """
+        serializer = FCMTokenCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            token = serializer.save()
+            return Response({
+                'mensaje': 'Token FCM registrado exitosamente',
+                'token_id': token.id
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def get(self, request):
+        """
+        GET /api/fcm-tokens/
+        Obtiene todos los tokens FCM del usuario autenticado
+        """
+        tokens = FCMToken.objects.filter(usuario=request.user, activo=True)
+        serializer = FCMTokenSerializer(tokens, many=True)
+        return Response(serializer.data)
+    
+    def delete(self, request):
+        """
+        DELETE /api/fcm-tokens/
+        Desactiva un token FCM específico
+        """
+        token_value = request.data.get('token')
+        if not token_value:
+            return Response({'error': 'Se requiere el campo token'}, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
-            quiniela = Quiniela.objects.get(pk=quiniela_id)
-        except Quiniela.DoesNotExist:
-            return Response({'error': 'Quiniela no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+            token = FCMToken.objects.get(
+                usuario=request.user,
+                token=token_value,
+                activo=True
+            )
+            token.activo = False
+            token.save()
+            return Response({'mensaje': 'Token FCM desactivado exitosamente'})
+        except FCMToken.DoesNotExist:
+            return Response({'error': 'Token no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-        mostrar = request.data.get('mostrar_elecciones')
-        if mostrar is None:
-            return Response({'error': 'Falta el campo mostrar_elecciones'}, status=status.HTTP_400_BAD_REQUEST)
+class FCMTokenDetailView(APIView):
+    """
+    Vista para manejar un token FCM específico
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def put(self, request, token_id):
+        """
+        PUT /api/fcm-tokens/<token_id>/
+        Actualiza un token FCM específico
+        """
+        try:
+            token = FCMToken.objects.get(id=token_id, usuario=request.user)
+        except FCMToken.DoesNotExist:
+            return Response({'error': 'Token no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = FCMTokenSerializer(token, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, token_id):
+        """
+        DELETE /api/fcm-tokens/<token_id>/
+        Desactiva un token FCM específico
+        """
+        try:
+            token = FCMToken.objects.get(id=token_id, usuario=request.user)
+            token.activo = False
+            token.save()
+            return Response({'mensaje': 'Token FCM desactivado exitosamente'})
+        except FCMToken.DoesNotExist:
+            return Response({'error': 'Token no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-        quiniela.mostrar_elecciones = mostrar
-        quiniela.save()
-        return Response({'mostrar_elecciones': quiniela.mostrar_elecciones}, status=status.HTTP_200_OK)
+class TestNotificationView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            title = request.data.get('title', 'Notificación de Prueba')
+            body = request.data.get('body', 'Esta es una notificación de prueba')
+            
+            # Enviar notificación de prueba al usuario actual
+            success = fcm_service.send_notification_to_user(
+                user_id=request.user.id,
+                title=title,
+                body=body
+            )
+            
+            if success:
+                return Response({
+                    'mensaje': 'Notificación de prueba enviada exitosamente',
+                    'usuario': request.user.username
+                }, status=200)
+            else:
+                return Response({
+                    'mensaje': 'Error al enviar notificación de prueba',
+                    'usuario': request.user.username
+                }, status=500)
+                
+        except Exception as e:
+            logger.error(f"Error en notificación de prueba: {e}")
+            return Response({
+                'error': 'Error interno del servidor'
+            }, status=500)
+
+
+class TestAuthView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Endpoint simple para probar autenticación"""
+        return Response({
+            'mensaje': 'Autenticación exitosa',
+            'usuario': {
+                'id': request.user.id,
+                'username': request.user.username,
+                'email': request.user.email,
+                'is_active': request.user.is_active
+            },
+            'timestamp': datetime.now().isoformat()
+        }, status=200)
